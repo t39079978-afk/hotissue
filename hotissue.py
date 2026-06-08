@@ -8,34 +8,30 @@ import matplotlib.font_manager as fm
 # 기본 설정
 # =========================
 st.set_page_config(
-    page_title="검색량 유행 민감도 분석",
-    layout="wide"
+ page_title="검색량 유행 민감도 분석",
+ layout="wide"
 )
 
 # =========================
 # 한글 폰트 설정
 # =========================
 def set_korean_font():
-    system_name = platform.system()
-    available_fonts = {f.name for f in fm.fontManager.ttflist}
+ system_name = platform.system()
+ available_fonts = {f.name for f in fm.fontManager.ttflist}
 
-    if system_name == "Windows":
-        candidates = ["Malgun Gothic", "맑은 고딕"]
-    elif system_name == "Darwin":
-        candidates = ["AppleGothic"]
-    else:
-        candidates = ["NanumGothic", "Nanum Gothic", "Noto Sans CJK KR", "Noto Sans KR", "DejaVu Sans"]
+ if system_name == "Windows":
+  candidates = ["Malgun Gothic", "맑은 고딕"]
+ elif system_name == "Darwin":
+  candidates = ["AppleGothic"]
+ else:
+  candidates = ["NanumGothic", "Nanum Gothic", "Noto Sans CJK KR", "Noto Sans KR", "DejaVu Sans"]
 
-    selected_font = None
-    for font_name in candidates:
-        if font_name in available_fonts:
-            selected_font = font_name
-            break
+ for font_name in candidates:
+  if font_name in available_fonts:
+   plt.rcParams["font.family"] = font_name
+   break
 
-    if selected_font is not None:
-        plt.rcParams["font.family"] = selected_font
-
-    plt.rcParams["axes.unicode_minus"] = False
+ plt.rcParams["axes.unicode_minus"] = False
 
 set_korean_font()
 
@@ -49,443 +45,442 @@ st.caption("엑셀 검색량 데이터를 기반으로 집단별 유행 민감�
 # 파일 업로드
 # =========================
 uploaded_files = st.file_uploader(
-    "엑셀 파일을 업로드하세요. 여러 개 업로드할 수 있습니다.",
-    type=["xlsx", "xls"],
-    accept_multiple_files=True
+ "엑셀 파일을 업로드하세요. 여러 개 업로드할 수 있습니다.",
+ type=["xlsx", "xls"],
+ accept_multiple_files=True
 )
 
 # =========================
 # 엑셀 데이터 읽기
 # =========================
 def read_search_sheet(file, sheet_name):
-    raw_df = pd.read_excel(
-        file,
-        sheet_name=sheet_name,
-        header=None
-    )
+ raw_df = pd.read_excel(
+ file,
+ sheet_name=sheet_name,
+ header=None
+ )
+ if raw_df.shape[0] < 4:
+  st.error(f"'{sheet_name}' 시트의 행 개수가 부족합니다.")
+  return pd.DataFrame()
 
-    if raw_df.shape[0] < 4:
-        st.error(f"'{sheet_name}' 시트의 행 개수가 부족합니다.")
-        return pd.DataFrame()
+ # 3행을 컬럼명으로 사용
+ columns = raw_df.iloc[2].tolist()
+ clean_columns = []
+ for idx, col in enumerate(columns):
+  if pd.isna(col):
+   clean_columns.append(f"Unnamed_{idx}")
+  else:
+   clean_columns.append(str(col).strip())
 
-    # 3행을 컬럼명으로 사용
-    columns = raw_df.iloc[2].tolist()
-    clean_columns = []
-    for idx, col in enumerate(columns):
-        if pd.isna(col):
-            clean_columns.append(f"Unnamed_{idx}")
-        else:
-            clean_columns.append(str(col).strip())
+ # 4행부터 실제 데이터
+ df = raw_df.iloc[3:].copy()
+ df.columns = clean_columns
 
-    # 4행부터 실제 데이터
-    df = raw_df.iloc[3:].copy()
-    df.columns = clean_columns
+ # 빈 행/열 제거
+ df = df.dropna(axis=0, how="all")
+ df = df.dropna(axis=1, how="all")
 
-    # 빈 행/열 제거
-    df = df.dropna(axis=0, how="all")
-    df = df.dropna(axis=1, how="all")
+ if "날짜" not in df.columns:
+  st.error(f"'{sheet_name}' 시트에서 '날짜' 컬럼을 찾을 수 없습니다.")
+  st.write("현재 인식된 컬럼:", df.columns.tolist())
+  return pd.DataFrame()
 
-    if "날짜" not in df.columns:
-        st.error(f"'{sheet_name}' 시트에서 '날짜' 컬럼을 찾을 수 없습니다.")
-        st.write("현재 인식된 컬럼:", df.columns.tolist())
-        return pd.DataFrame()
+ # 날짜 변환
+ df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce")
+ df = df.dropna(subset=["날짜"])
 
-    # 날짜 변환
-    df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce")
-    df = df.dropna(subset=["날짜"])
+ # 날짜순 정렬
+ df = df.sort_values("날짜").reset_index(drop=True)
 
-    # 날짜순 정렬
-    df = df.sort_values("날짜").reset_index(drop=True)
+ # 숫자 변환
+ for col in df.columns:
+  if col != "날짜":
+   df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    # 숫자 변환
-    for col in df.columns:
-        if col != "날짜":
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-    return df
+ return df
 
 # =========================
 # 집단 컬럼 순서 고정
 # =========================
 def get_group_columns(df):
-    columns = list(df.columns)
-    age_order = ["10,20대", "30,40대", "50,60대"]
-    gender_order = ["여성", "남성"]
+ columns = list(df.columns)
+ age_order = ["10,20대", "30,40대", "50,60대"]
+ gender_order = ["여성", "남성"]
 
-    if all(col in columns for col in age_order):
-        return age_order
+ if all(col in columns for col in age_order):
+  return age_order
 
-    if all(col in columns for col in gender_order):
-        return gender_order
+ if all(col in columns for col in gender_order):
+  return gender_order
 
-    exclude_cols = ["날짜", "전체"]
-    group_cols = [
-        col for col in columns
-        if col not in exclude_cols
-        and not str(col).startswith("Unnamed_")
-    ]
-    return group_cols
+ exclude_cols = ["날짜", "전체"]
+ group_cols = [
+  col for col in columns
+  if col not in exclude_cols
+  and not str(col).startswith("Unnamed_")
+ ]
+ return group_cols
 
 # =========================
 # 분석 유형
 # =========================
 def detect_analysis_type(df):
-    columns = list(df.columns)
+ columns = list(df.columns)
 
-    if all(col in columns for col in ["10,20대", "30,40대", "50,60대"]):
-        return "연령대별 분석"
+ if all(col in columns for col in ["10,20대", "30,40대", "50,60대"]):
+  return "연령대별 분석"
 
-    if all(col in columns for col in ["여성", "남성"]):
-        return "성별 분석"
+ if all(col in columns for col in ["여성", "남성"]):
+  return "성별 분석"
 
-    return "집단별 분석"
+ return "집단별 분석"
 
 # =========================
 # min-max 정규화
 # =========================
 def minmax_normalize(series):
-    min_value = series.min()
-    max_value = series.max()
+ min_value = series.min()
+ max_value = series.max()
 
-    if max_value == min_value:
-        return pd.Series([0] * len(series), index=series.index)
+ if max_value == min_value:
+  return pd.Series([0] * len(series), index=series.index)
 
-    return (series - min_value) / (max_value - min_value)
+ return (series - min_value) / (max_value - min_value)
 
 # =========================
 # 유행 분석 계산
 # =========================
 def calculate_trend_analysis(df, group_cols):
-    rows = []
+ rows = []
 
-    for group in group_cols:
-        values = df[group].fillna(0)
+ for group in group_cols:
+  values = df[group].fillna(0)
 
-        mean_value = values.mean()
-        std_value = values.std()
-        avg_abs_daily_change = values.diff().abs().mean()
+  mean_value = values.mean()
+  std_value = values.std()
+  avg_abs_daily_change = values.diff().abs().mean()
 
-        max_idx = values.idxmax()
-        peak_date = df.loc[max_idx, "날짜"]
-        peak_value = values.loc[max_idx]
+  max_idx = values.idxmax()
+  peak_date = df.loc[max_idx, "날짜"]
+  peak_value = values.loc[max_idx]
 
-        rows.append({
-            "집단": group,
-            "평균 검색량": mean_value,
-            "표준편차": std_value,
-            "일별 변화량 절댓값 평균": avg_abs_daily_change,
-            "최고점 날짜": peak_date,
-            "최고점 검색량": peak_value
-        })
+  rows.append({
+   "집단": group,
+   "평균 검색량": mean_value,
+   "표준편차": std_value,
+   "일별 변화량 절댓값 평균": avg_abs_daily_change,
+   "최고점 날짜": peak_date,
+   "최고점 검색량": peak_value
+  })
 
-    result_df = pd.DataFrame(rows)
+ result_df = pd.DataFrame(rows)
 
-    if result_df.empty:
-        return result_df
+ if result_df.empty:
+  return result_df
 
-    # 유행 민감도 점수 =
-    # 표준편차 정규화 + 일별 변화량 절댓값 평균 정규화
-    result_df["표준편차 정규화"] = minmax_normalize(result_df["표준편차"])
-    result_df["일별 변화량 정규화"] = minmax_normalize(result_df["일별 변화량 절댓값 평균"])
-    result_df["유행 민감도 점수"] = (
-        result_df["표준편차 정규화"] +
-        result_df["일별 변화량 정규화"]
-    )
+ # 유행 민감도 점수 =
+ # 표준편차 정규화 + 일별 변화량 절댓값 평균 정규화
+ result_df["표준편차 정규화"] = minmax_normalize(result_df["표준편차"])
+ result_df["일별 변화량 정규화"] = minmax_normalize(result_df["일별 변화량 절댓값 평균"])
+ result_df["유행 민감도 점수"] = (
+  result_df["표준편차 정규화"] +
+  result_df["일별 변화량 정규화"]
+ )
 
-    return result_df
+ return result_df
 
 # =========================
 # 분석 결과 문장 출력
 # =========================
 def show_trend_summary(item_name, result_df):
-    if result_df.empty:
-        return
+ if result_df.empty:
+  return
 
-    most_sensitive = result_df.loc[result_df["유행 민감도 점수"].idxmax()]
-    fastest = result_df.loc[result_df["최고점 날짜"].idxmin()]
-    slowest = result_df.loc[result_df["최고점 날짜"].idxmax()]
-    highest_mean = result_df.loc[result_df["평균 검색량"].idxmax()]
-    lowest_mean = result_df.loc[result_df["평균 검색량"].idxmin()]
+ most_sensitive = result_df.loc[result_df["유행 민감도 점수"].idxmax()]
+ fastest = result_df.loc[result_df["최고점 날짜"].idxmin()]
+ slowest = result_df.loc[result_df["최고점 날짜"].idxmax()]
+ highest_mean = result_df.loc[result_df["평균 검색량"].idxmax()]
+ lowest_mean = result_df.loc[result_df["평균 검색량"].idxmin()]
 
-    st.subheader("분석 결과")
-    st.write(f"선택한 항목은 **{item_name}**입니다.")
-    st.write("")
-    st.write(
-        f"유행 변화에 가장 민감한 집단은 **{most_sensitive['집단']}**입니다."
-    )
-    st.write(
-        "이는 표준편차와 일별 변화량 절댓값 평균을 정규화하여 합산한 "
-        "유행 민감도 점수가 가장 높기 때문입니다."
-    )
-    st.write("")
-    st.write(
-        f"유행이 가장 빠른 집단은 **{fastest['집단']}**입니다."
-    )
-    st.write(
-        f"유행이 가장 느린 집단은 **{slowest['집단']}**입니다."
-    )
-    st.write("")
-    st.write(
-        f"평균 검색량이 가장 높은 집단은 **{highest_mean['집단']}**입니다."
-    )
-    st.write(
-        f"평균 검색량이 가장 낮은 집단은 **{lowest_mean['집단']}**입니다."
-    )
-    st.write("")
-    st.write("집단별 최고점은 다음과 같습니다.")
+ st.subheader("분석 결과")
+ st.write(f"선택한 항목은 **{item_name}**입니다.")
+ st.write("")
+ st.write(
+  f"유행 변화에 가장 민감한 집단은 **{most_sensitive['집단']}**입니다."
+ )
+ st.write(
+  "이는 표준편차와 일별 변화량 절댓값 평균을 정규화하여 합산한 "
+  "유행 민감도 점수가 가장 높기 때문입니다."
+ )
+ st.write("")
+ st.write(
+  f"유행이 가장 빠른 집단은 **{fastest['집단']}**입니다."
+ )
+ st.write(
+  f"유행이 가장 느린 집단은 **{slowest['집단']}**입니다."
+ )
+ st.write("")
+ st.write(
+  f"평균 검색량이 가장 높은 집단은 **{highest_mean['집단']}**입니다."
+ )
+ st.write(
+  f"평균 검색량이 가장 낮은 집단은 **{lowest_mean['집단']}**입니다."
+ )
+ st.write("")
+ st.write("집단별 최고점은 다음과 같습니다.")
 
-    for _, row in result_df.iterrows():
-        peak_date_text = row["최고점 날짜"].strftime("%Y-%m-%d")
-        peak_value_text = f"{row['최고점 검색량']:.5f}"
-        st.write(
-            f"- {row['집단']}: {peak_date_text}, 검색량 {peak_value_text}"
-        )
+ for _, row in result_df.iterrows():
+  peak_date_text = row["최고점 날짜"].strftime("%Y-%m-%d")
+  peak_value_text = f"{row['최고점 검색량']:.5f}"
+  st.write(
+   f"- {row['집단']}: {peak_date_text}, 검색량 {peak_value_text}"
+  )
 
 # =========================
 # 시계열 그래프
 # =========================
 def plot_timeseries(df, group_cols, title):
-    fig, ax = plt.subplots(figsize=(13, 5))
+ fig, ax = plt.subplots(figsize=(13, 5))
 
-    for group in group_cols:
-        ax.plot(
-            df["날짜"],
-            df[group],
-            marker="o",
-            markersize=2,
-            linewidth=1.5,
-            label=group
-        )
+ for group in group_cols:
+  ax.plot(
+   df["날짜"],
+   df[group],
+   marker="o",
+   markersize=2,
+   linewidth=1.5,
+   label=group
+  )
 
-    ax.set_title(title)
-    ax.set_xlabel("날짜")
-    ax.set_ylabel("검색량")
-    ax.legend()
-    ax.grid(alpha=0.25)
-    plt.tight_layout()
-    st.pyplot(fig)
+ ax.set_title(title)
+ ax.set_xlabel("날짜")
+ ax.set_ylabel("검색량")
+ ax.legend()
+ ax.grid(alpha=0.25)
+ plt.tight_layout()
+ st.pyplot(fig)
 
 # =========================
 # 유행 민감도 그래프
 # =========================
 def plot_sensitivity_score(result_df, title):
-    fig, ax = plt.subplots(figsize=(10, 5))
+ fig, ax = plt.subplots(figsize=(10, 5))
 
-    max_group = result_df.loc[
-        result_df["유행 민감도 점수"].idxmax(),
-        "집단"
-    ]
+ max_group = result_df.loc[
+  result_df["유행 민감도 점수"].idxmax(),
+  "집단"
+ ]
 
-    colors = [
-        "#F28E2B" if group == max_group else "#A0CBE8"
-        for group in result_df["집단"]
-    ]
+ colors = [
+  "#F28E2B" if group == max_group else "#A0CBE8"
+  for group in result_df["집단"]
+ ]
 
-    bars = ax.bar(
-        result_df["집단"],
-        result_df["유행 민감도 점수"],
-        color=colors
-    )
+ bars = ax.bar(
+  result_df["집단"],
+  result_df["유행 민감도 점수"],
+  color=colors
+ )
 
-    ax.set_title(title)
-    ax.set_xlabel("집단")
-    ax.set_ylabel("유행 민감도 점수")
-    ax.grid(axis="y", alpha=0.25)
+ ax.set_title(title)
+ ax.set_xlabel("집단")
+ ax.set_ylabel("유행 민감도 점수")
+ ax.grid(axis="y", alpha=0.25)
 
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            height,
-            f"{height:.3f}",
-            ha="center",
-            va="bottom",
-            fontsize=10
-        )
+ for bar in bars:
+  height = bar.get_height()
+  ax.text(
+   bar.get_x() + bar.get_width() / 2,
+   height,
+   f"{height:.3f}",
+   ha="center",
+   va="bottom",
+   fontsize=10
+  )
 
-    plt.tight_layout()
-    st.pyplot(fig)
+ plt.tight_layout()
+ st.pyplot(fig)
 
 # =========================
 # 평균 검색량 그래프
 # =========================
 def plot_mean_search(result_df, title):
-    fig, ax = plt.subplots(figsize=(10, 5))
+ fig, ax = plt.subplots(figsize=(10, 5))
 
-    bars = ax.bar(
-        result_df["집단"],
-        result_df["평균 검색량"],
-        color="#59A14F"
-    )
+ bars = ax.bar(
+  result_df["집단"],
+  result_df["평균 검색량"],
+  color="#59A14F"
+ )
 
-    ax.set_title(title)
-    ax.set_xlabel("집단")
-    ax.set_ylabel("평균 검색량")
-    ax.grid(axis="y", alpha=0.25)
+ ax.set_title(title)
+ ax.set_xlabel("집단")
+ ax.set_ylabel("평균 검색량")
+ ax.grid(axis="y", alpha=0.25)
 
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            height,
-            f"{height:.5f}",
-            ha="center",
-            va="bottom",
-            fontsize=10
-        )
+ for bar in bars:
+  height = bar.get_height()
+  ax.text(
+   bar.get_x() + bar.get_width() / 2,
+   height,
+   f"{height:.5f}",
+   ha="center",
+   va="bottom",
+   fontsize=10
+  )
 
-    plt.tight_layout()
-    st.pyplot(fig)
+ plt.tight_layout()
+ st.pyplot(fig)
 
 # =========================
 # 최고점 검색량 그래프
 # =========================
 def plot_peak_search(result_df, title):
-    fig, ax = plt.subplots(figsize=(10, 5))
+ fig, ax = plt.subplots(figsize=(10, 5))
 
-    bars = ax.bar(
-        result_df["집단"],
-        result_df["최고점 검색량"],
-        color="#4C78A8"
-    )
+ bars = ax.bar(
+  result_df["집단"],
+  result_df["최고점 검색량"],
+  color="#4C78A8"
+ )
 
-    ax.set_title(title)
-    ax.set_xlabel("집단")
-    ax.set_ylabel("최고점 검색량")
-    ax.grid(axis="y", alpha=0.25)
+ ax.set_title(title)
+ ax.set_xlabel("집단")
+ ax.set_ylabel("최고점 검색량")
+ ax.grid(axis="y", alpha=0.25)
 
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            height,
-            f"{height:.5f}",
-            ha="center",
-            va="bottom",
-            fontsize=10
-        )
+ for bar in bars:
+  height = bar.get_height()
+  ax.text(
+   bar.get_x() + bar.get_width() / 2,
+   height,
+   f"{height:.5f}",
+   ha="center",
+   va="bottom",
+   fontsize=10
+  )
 
-    plt.tight_layout()
-    st.pyplot(fig)
+ plt.tight_layout()
+ st.pyplot(fig)
 
 # =========================
 # 메인 실행부
 # =========================
 if uploaded_files:
-    st.sidebar.header("분석 설정")
+ st.sidebar.header("분석 설정")
 
-    file_names = [file.name for file in uploaded_files]
-    selected_file_name = st.sidebar.selectbox(
-        "분석할 파일을 선택하세요",
-        file_names
+ file_names = [file.name for file in uploaded_files]
+ selected_file_name = st.sidebar.selectbox(
+  "분석할 파일을 선택하세요",
+  file_names
+ )
+
+ selected_file = None
+ for file in uploaded_files:
+  if file.name == selected_file_name:
+   selected_file = file
+   break
+
+ if selected_file is not None:
+  # 절대 캐시 사용하지 않음
+  xls = pd.ExcelFile(selected_file)
+  sheet_names = xls.sheet_names
+
+  selected_sheet = st.sidebar.selectbox(
+   "분석할 항목을 선택하세요",
+   sheet_names
+  )
+
+  df = read_search_sheet(selected_file, selected_sheet)
+
+  if not df.empty:
+   analysis_type = detect_analysis_type(df)
+   group_cols = get_group_columns(df)
+
+   st.subheader("선택 정보")
+   st.write(f"선택한 파일: **{selected_file_name}**")
+   st.write(f"선택한 항목: **{selected_sheet}**")
+   st.write(f"분석 유형: **{analysis_type}**")
+
+   if len(group_cols) == 0:
+    st.error("비교할 집단 컬럼을 찾을 수 없습니다.")
+   else:
+    selected_groups = st.sidebar.multiselect(
+     "분석할 집단을 선택하세요",
+     group_cols,
+     default=group_cols
     )
 
-    selected_file = None
-    for file in uploaded_files:
-        if file.name == selected_file_name:
-            selected_file = file
-            break
+    if len(selected_groups) == 0:
+     st.warning("최소 1개 이상의 집단을 선택하세요.")
+    else:
+     # 선택해도 원래 순서 유지
+     selected_groups = [
+      group for group in group_cols
+      if group in selected_groups
+     ]
 
-    if selected_file is not None:
-        # 절대 캐시 사용하지 않음
-        xls = pd.ExcelFile(selected_file)
-        sheet_names = xls.sheet_names
+     result_df = calculate_trend_analysis(
+      df,
+      selected_groups
+     )
 
-        selected_sheet = st.sidebar.selectbox(
-            "분석할 항목을 선택하세요",
-            sheet_names
-        )
+     # 네가 원한 문장형 결과
+     show_trend_summary(
+      selected_sheet,
+      result_df
+     )
 
-        df = read_search_sheet(selected_file, selected_sheet)
+     st.subheader("상세 분석표")
+     display_df = result_df.copy()
+     display_df["최고점 날짜"] = display_df["최고점 날짜"].dt.strftime("%Y-%m-%d")
 
-        if not df.empty:
-            analysis_type = detect_analysis_type(df)
-            group_cols = get_group_columns(df)
+     st.dataframe(
+      display_df[[
+       "집단",
+       "평균 검색량",
+       "표준편차",
+       "일별 변화량 절댓값 평균",
+       "유행 민감도 점수",
+       "최고점 날짜",
+       "최고점 검색량"
+      ]].style.format({
+       "평균 검색량": "{:.5f}",
+       "표준편차": "{:.5f}",
+       "일별 변화량 절댓값 평균": "{:.5f}",
+       "유행 민감도 점수": "{:.3f}",
+       "최고점 검색량": "{:.5f}"
+      }),
+      use_container_width=True
+     )
 
-            st.subheader("선택 정보")
-            st.write(f"선택한 파일: **{selected_file_name}**")
-            st.write(f"선택한 항목: **{selected_sheet}**")
-            st.write(f"분석 유형: **{analysis_type}**")
+     st.subheader("검색량 추이 그래프")
+     plot_timeseries(
+      df,
+      selected_groups,
+      f"{selected_sheet} {analysis_type} 검색량 추이"
+     )
 
-            if len(group_cols) == 0:
-                st.error("비교할 집단 컬럼을 찾을 수 없습니다.")
-            else:
-                selected_groups = st.sidebar.multiselect(
-                    "분석할 집단을 선택하세요",
-                    group_cols,
-                    default=group_cols
-                )
+     col1, col2 = st.columns(2)
 
-                if len(selected_groups) == 0:
-                    st.warning("최소 1개 이상의 집단을 선택하세요.")
-                else:
-                    # 선택해도 원래 순서 유지
-                    selected_groups = [
-                        group for group in group_cols
-                        if group in selected_groups
-                    ]
+     with col1:
+      st.subheader("유행 민감도 점수")
+      plot_sensitivity_score(
+       result_df,
+       f"{selected_sheet} 유행 민감도 점수"
+      )
 
-                    result_df = calculate_trend_analysis(
-                        df,
-                        selected_groups
-                    )
+     with col2:
+      st.subheader("평균 검색량")
+      plot_mean_search(
+       result_df,
+       f"{selected_sheet} 평균 검색량"
+      )
 
-                    # 네가 원한 문장형 결과
-                    show_trend_summary(
-                        selected_sheet,
-                        result_df
-                    )
-
-                    st.subheader("상세 분석표")
-                    display_df = result_df.copy()
-                    display_df["최고점 날짜"] = display_df["최고점 날짜"].dt.strftime("%Y-%m-%d")
-
-                    st.dataframe(
-                        display_df[[
-                            "집단",
-                            "평균 검색량",
-                            "표준편차",
-                            "일별 변화량 절댓값 평균",
-                            "유행 민감도 점수",
-                            "최고점 날짜",
-                            "최고점 검색량"
-                        ]].style.format({
-                            "평균 검색량": "{:.5f}",
-                            "표준편차": "{:.5f}",
-                            "일별 변화량 절댓값 평균": "{:.5f}",
-                            "유행 민감도 점수": "{:.3f}",
-                            "최고점 검색량": "{:.5f}"
-                        }),
-                        use_container_width=True
-                    )
-
-                    st.subheader("검색량 추이 그래프")
-                    plot_timeseries(
-                        df,
-                        selected_groups,
-                        f"{selected_sheet} {analysis_type} 검색량 추이"
-                    )
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        st.subheader("유행 민감도 점수")
-                        plot_sensitivity_score(
-                            result_df,
-                            f"{selected_sheet} 유행 민감도 점수"
-                        )
-
-                    with col2:
-                        st.subheader("평균 검색량")
-                        plot_mean_search(
-                            result_df,
-                            f"{selected_sheet} 평균 검색량"
-                        )
-
-                    st.subheader("최고점 검색량")
-                    plot_peak_search(
-                        result_df,
-                        f"{selected_sheet} 집단별 최고점 검색량"
-                    )
+     st.subheader("최고점 검색량")
+     plot_peak_search(
+      result_df,
+      f"{selected_sheet} 집단별 최고점 검색량"
+     )
 else:
-    st.info("분석할 엑셀 파일을 업로드하세요.")
+ st.info("분석할 엑셀 파일을 업로드하세요.")
