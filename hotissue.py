@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import platform
-import matplotlib.font_manager as fm
 
 # =========================
 # 기본 설정
@@ -17,23 +16,39 @@ st.set_page_config(
 # =========================
 def set_korean_font():
  system_name = platform.system()
- available_fonts = {f.name for f in fm.fontManager.ttflist}
-
  if system_name == "Windows":
-  candidates = ["Malgun Gothic", "맑은 고딕"]
+  plt.rcParams["font.family"] = "Malgun Gothic"
  elif system_name == "Darwin":
-  candidates = ["AppleGothic"]
+  plt.rcParams["font.family"] = "AppleGothic"
  else:
-  candidates = ["NanumGothic", "Nanum Gothic", "Noto Sans CJK KR", "Noto Sans KR", "DejaVu Sans"]
-
- for font_name in candidates:
-  if font_name in available_fonts:
-   plt.rcParams["font.family"] = font_name
-   break
-
+  plt.rcParams["font.family"] = "NanumGothic"
  plt.rcParams["axes.unicode_minus"] = False
 
 set_korean_font()
+
+# =========================
+# 그래프용 한글 -> 영어 변환
+# =========================
+def to_english_label(text):
+ mapping = {
+  "여성": "Female",
+  "남성": "Male",
+  "10,20대": "Age 10-20",
+  "30,40대": "Age 30-40",
+  "50,60대": "Age 50-60",
+  "집단": "Group",
+  "날짜": "Date",
+  "검색량": "Search Volume",
+  "유행 민감도 점수": "Trend Sensitivity Score",
+  "평균 검색량": "Average Search Volume",
+  "최고점 검색량": "Peak Search Volume",
+  "연령대별 분석": "Age Group Analysis",
+  "성별 분석": "Gender Analysis",
+  "집단별 분석": "Group Analysis",
+  "검색량 추이": "Search Trend",
+  "집단별 최고점 검색량": "Peak Search Volume by Group"
+ }
+ return mapping.get(str(text), str(text))
 
 # =========================
 # 제목
@@ -55,10 +70,11 @@ uploaded_files = st.file_uploader(
 # =========================
 def read_search_sheet(file, sheet_name):
  raw_df = pd.read_excel(
- file,
- sheet_name=sheet_name,
- header=None
+  file,
+  sheet_name=sheet_name,
+  header=None
  )
+
  if raw_df.shape[0] < 4:
   st.error(f"'{sheet_name}' 시트의 행 개수가 부족합니다.")
   return pd.DataFrame()
@@ -66,6 +82,7 @@ def read_search_sheet(file, sheet_name):
  # 3행을 컬럼명으로 사용
  columns = raw_df.iloc[2].tolist()
  clean_columns = []
+
  for idx, col in enumerate(columns):
   if pd.isna(col):
    clean_columns.append(f"Unnamed_{idx}")
@@ -104,6 +121,7 @@ def read_search_sheet(file, sheet_name):
 # =========================
 def get_group_columns(df):
  columns = list(df.columns)
+
  age_order = ["10,20대", "30,40대", "50,60대"]
  gender_order = ["여성", "남성"]
 
@@ -119,6 +137,7 @@ def get_group_columns(df):
   if col not in exclude_cols
   and not str(col).startswith("Unnamed_")
  ]
+
  return group_cols
 
 # =========================
@@ -155,11 +174,9 @@ def calculate_trend_analysis(df, group_cols):
 
  for group in group_cols:
   values = df[group].fillna(0)
-
   mean_value = values.mean()
   std_value = values.std()
   avg_abs_daily_change = values.diff().abs().mean()
-
   max_idx = values.idxmax()
   peak_date = df.loc[max_idx, "날짜"]
   peak_value = values.loc[max_idx]
@@ -249,12 +266,12 @@ def plot_timeseries(df, group_cols, title):
    marker="o",
    markersize=2,
    linewidth=1.5,
-   label=group
+   label=to_english_label(group)
   )
 
  ax.set_title(title)
- ax.set_xlabel("날짜")
- ax.set_ylabel("검색량")
+ ax.set_xlabel("Date")
+ ax.set_ylabel("Search Volume")
  ax.legend()
  ax.grid(alpha=0.25)
  plt.tight_layout()
@@ -277,14 +294,14 @@ def plot_sensitivity_score(result_df, title):
  ]
 
  bars = ax.bar(
-  result_df["집단"],
+  [to_english_label(x) for x in result_df["집단"]],
   result_df["유행 민감도 점수"],
   color=colors
  )
 
  ax.set_title(title)
- ax.set_xlabel("집단")
- ax.set_ylabel("유행 민감도 점수")
+ ax.set_xlabel("Group")
+ ax.set_ylabel("Trend Sensitivity Score")
  ax.grid(axis="y", alpha=0.25)
 
  for bar in bars:
@@ -308,14 +325,14 @@ def plot_mean_search(result_df, title):
  fig, ax = plt.subplots(figsize=(10, 5))
 
  bars = ax.bar(
-  result_df["집단"],
+  [to_english_label(x) for x in result_df["집단"]],
   result_df["평균 검색량"],
   color="#59A14F"
  )
 
  ax.set_title(title)
- ax.set_xlabel("집단")
- ax.set_ylabel("평균 검색량")
+ ax.set_xlabel("Group")
+ ax.set_ylabel("Average Search Volume")
  ax.grid(axis="y", alpha=0.25)
 
  for bar in bars:
@@ -339,14 +356,14 @@ def plot_peak_search(result_df, title):
  fig, ax = plt.subplots(figsize=(10, 5))
 
  bars = ax.bar(
-  result_df["집단"],
+  [to_english_label(x) for x in result_df["집단"]],
   result_df["최고점 검색량"],
   color="#4C78A8"
  )
 
  ax.set_title(title)
- ax.set_xlabel("집단")
- ax.set_ylabel("최고점 검색량")
+ ax.set_xlabel("Group")
+ ax.set_ylabel("Peak Search Volume")
  ax.grid(axis="y", alpha=0.25)
 
  for bar in bars:
@@ -458,7 +475,7 @@ if uploaded_files:
      plot_timeseries(
       df,
       selected_groups,
-      f"{selected_sheet} {analysis_type} 검색량 추이"
+      f"{selected_sheet} {to_english_label(analysis_type)} Search Trend"
      )
 
      col1, col2 = st.columns(2)
@@ -467,20 +484,21 @@ if uploaded_files:
       st.subheader("유행 민감도 점수")
       plot_sensitivity_score(
        result_df,
-       f"{selected_sheet} 유행 민감도 점수"
+       f"{selected_sheet} Trend Sensitivity Score"
       )
 
      with col2:
       st.subheader("평균 검색량")
       plot_mean_search(
        result_df,
-       f"{selected_sheet} 평균 검색량"
+       f"{selected_sheet} Average Search Volume"
       )
 
      st.subheader("최고점 검색량")
      plot_peak_search(
       result_df,
-      f"{selected_sheet} 집단별 최고점 검색량"
+      f"{selected_sheet} Peak Search Volume by Group"
      )
+
 else:
  st.info("분석할 엑셀 파일을 업로드하세요.")
