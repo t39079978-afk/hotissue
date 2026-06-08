@@ -35,18 +35,7 @@ def to_english_label(text):
   "남성": "Male",
   "10,20대": "Age 10-20",
   "30,40대": "Age 30-40",
-  "50,60대": "Age 50-60",
-  "집단": "Group",
-  "날짜": "Date",
-  "검색량": "Search Volume",
-  "유행 민감도 점수": "Trend Sensitivity Score",
-  "평균 검색량": "Average Search Volume",
-  "최고점 검색량": "Peak Search Volume",
-  "연령대별 분석": "Age Group Analysis",
-  "성별 분석": "Gender Analysis",
-  "집단별 분석": "Group Analysis",
-  "검색량 추이": "Search Trend",
-  "집단별 최고점 검색량": "Peak Search Volume by Group"
+  "50,60대": "Age 50-60"
  }
  return mapping.get(str(text), str(text))
 
@@ -258,7 +247,6 @@ def show_trend_summary(item_name, result_df):
 # =========================
 def plot_timeseries(df, group_cols, title):
  fig, ax = plt.subplots(figsize=(13, 5))
-
  for group in group_cols:
   ax.plot(
    df["날짜"],
@@ -268,7 +256,6 @@ def plot_timeseries(df, group_cols, title):
    linewidth=1.5,
    label=to_english_label(group)
   )
-
  ax.set_title(title)
  ax.set_xlabel("Date")
  ax.set_ylabel("Search Volume")
@@ -282,28 +269,23 @@ def plot_timeseries(df, group_cols, title):
 # =========================
 def plot_sensitivity_score(result_df, title):
  fig, ax = plt.subplots(figsize=(10, 5))
-
  max_group = result_df.loc[
   result_df["유행 민감도 점수"].idxmax(),
   "집단"
  ]
-
  colors = [
   "#F28E2B" if group == max_group else "#A0CBE8"
   for group in result_df["집단"]
  ]
-
  bars = ax.bar(
   [to_english_label(x) for x in result_df["집단"]],
   result_df["유행 민감도 점수"],
   color=colors
  )
-
  ax.set_title(title)
  ax.set_xlabel("Group")
  ax.set_ylabel("Trend Sensitivity Score")
  ax.grid(axis="y", alpha=0.25)
-
  for bar in bars:
   height = bar.get_height()
   ax.text(
@@ -323,18 +305,15 @@ def plot_sensitivity_score(result_df, title):
 # =========================
 def plot_mean_search(result_df, title):
  fig, ax = plt.subplots(figsize=(10, 5))
-
  bars = ax.bar(
   [to_english_label(x) for x in result_df["집단"]],
   result_df["평균 검색량"],
   color="#59A14F"
  )
-
  ax.set_title(title)
  ax.set_xlabel("Group")
  ax.set_ylabel("Average Search Volume")
  ax.grid(axis="y", alpha=0.25)
-
  for bar in bars:
   height = bar.get_height()
   ax.text(
@@ -345,7 +324,6 @@ def plot_mean_search(result_df, title):
    va="bottom",
    fontsize=10
   )
-
  plt.tight_layout()
  st.pyplot(fig)
 
@@ -354,18 +332,15 @@ def plot_mean_search(result_df, title):
 # =========================
 def plot_peak_search(result_df, title):
  fig, ax = plt.subplots(figsize=(10, 5))
-
  bars = ax.bar(
   [to_english_label(x) for x in result_df["집단"]],
   result_df["최고점 검색량"],
   color="#4C78A8"
  )
-
  ax.set_title(title)
  ax.set_xlabel("Group")
  ax.set_ylabel("Peak Search Volume")
  ax.grid(axis="y", alpha=0.25)
-
  for bar in bars:
   height = bar.get_height()
   ax.text(
@@ -376,7 +351,6 @@ def plot_peak_search(result_df, title):
    va="bottom",
    fontsize=10
   )
-
  plt.tight_layout()
  st.pyplot(fig)
 
@@ -475,7 +449,7 @@ if uploaded_files:
      plot_timeseries(
       df,
       selected_groups,
-      f"{selected_sheet} {to_english_label(analysis_type)} Search Trend"
+      "Search Trend"
      )
 
      col1, col2 = st.columns(2)
@@ -484,20 +458,20 @@ if uploaded_files:
       st.subheader("유행 민감도 점수")
       plot_sensitivity_score(
        result_df,
-       f"{selected_sheet} Trend Sensitivity Score"
+       "Trend Sensitivity Score"
       )
 
      with col2:
       st.subheader("평균 검색량")
       plot_mean_search(
        result_df,
-       f"{selected_sheet} Average Search Volume"
+       "Average Search Volume"
       )
 
      st.subheader("최고점 검색량")
      plot_peak_search(
       result_df,
-      f"{selected_sheet} Peak Search Volume by Group"
+      "Peak Search Volume by Group"
      )
 
 else:
